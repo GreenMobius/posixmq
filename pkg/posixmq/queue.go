@@ -144,9 +144,20 @@ func (mq *MessageQueue) TimedSend(msg []byte, priority uint, timeout time.Durati
 	return mq.commonSend(msg, priority, &timeout)
 }
 
-func (mq *MessageQueue) Receive() ([]byte, uint, error) {
+func (mq *MessageQueue) commonReceive(timeout *time.Duration) ([]byte, uint, error) {
 	var recvPriority uint
 	recvBuf := make([]byte, mq.attributes.MaxMessageSize)
+
+	var timeoutPtr uintptr = 0
+	if timeout != nil {
+		deadline := time.Now().Add(*timeout)
+		unixTimeout, err := unix.TimeToTimespec(deadline)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		timeoutPtr = uintptr(unsafe.Pointer(&unixTimeout))
+	}
 
 	for {
 		size, _, errno := unix.Syscall6(
@@ -155,7 +166,7 @@ func (mq *MessageQueue) Receive() ([]byte, uint, error) {
 			uintptr(unsafe.Pointer(&recvBuf[0])),
 			uintptr(len(recvBuf)),
 			uintptr(recvPriority),
-			0, // No timeout
+			timeoutPtr,
 			0, // Last value unused
 		)
 
@@ -175,4 +186,8 @@ func (mq *MessageQueue) Receive() ([]byte, uint, error) {
 			return nil, 0, errno
 		}
 	}
+}
+
+func (mq *MessageQueue) Receive() ([]byte, uint, error) {
+	return mq.commonReceive(nil)
 }
