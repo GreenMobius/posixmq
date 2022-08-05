@@ -87,6 +87,10 @@ func (mq *MessageQueue) Unlink() error {
 }
 
 func (mq *MessageQueue) Send(msg []byte, priority uint) error {
+	if len(msg) == 0 {
+		return errors.New("sending empty messages is not supported")
+	}
+
 	for {
 		_, _, errno := unix.Syscall6(
 			unix.SYS_MQ_TIMEDSEND,
