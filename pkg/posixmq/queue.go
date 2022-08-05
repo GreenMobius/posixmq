@@ -140,6 +140,10 @@ func (mq *MessageQueue) Send(msg []byte, priority uint) error {
 	return mq.commonSend(msg, priority, nil)
 }
 
+func (mq *MessageQueue) TimedSend(msg []byte, priority uint, timeout time.Duration) error {
+	return mq.commonSend(msg, priority, &timeout)
+}
+
 func (mq *MessageQueue) Receive() ([]byte, uint, error) {
 	var recvPriority uint
 	recvBuf := make([]byte, mq.attributes.MaxMessageSize)
