@@ -1,6 +1,7 @@
 package posixmq
 
 import (
+	"errors"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -9,6 +10,18 @@ import (
 const MessageQueueDefaultMode int = 0644
 const MessageQueueMaxQueueSize int64 = 10
 const MessageQueueMaxMessageSize int64 = 8192
+
+// ErrMessageQueueFull indicates that a send failed because a message queue is full
+var ErrMessageQueueFull = errors.New("message queue is full")
+
+// ErrMessageQueueEmpty indicates that a receive failed because a message queue is empty
+var ErrMessageQueueEmpty = errors.New("message queue is empty")
+
+// ErrMessageTooLarge indicates that a send failed because a message was longer than the specified maximum size
+var ErrMessageTooLarge = errors.New("message exceeds maximum size")
+
+// ErrMessageQueueInvalid indicates that a message queue is not valid
+var ErrMessageQueueInvalid = errors.New("invalid message queue")
 
 type MessageQueue struct {
 	fd         int
@@ -71,4 +84,68 @@ func (mq *MessageQueue) Unlink() error {
 	}
 
 	return nil
+}
+
+func (mq *MessageQueue) Send(msg []byte, priority uint) error {
+	if len(msg) == 0 {
+		return errors.New("sending empty messages is not supported")
+	}
+
+	for {
+		_, _, errno := unix.Syscall6(
+			unix.SYS_MQ_TIMEDSEND,
+			uintptr(mq.fd),
+			uintptr(unsafe.Pointer(&msg[0])),
+			uintptr(len(msg)),
+			uintptr(priority),
+			0, // No timeout
+			0, // Last value unused
+		)
+
+		switch errno {
+		case 0:
+			return nil
+		case unix.EINTR:
+			continue
+		case unix.EBADF:
+			return ErrMessageQueueInvalid
+		case unix.EMSGSIZE:
+			return ErrMessageTooLarge
+		case unix.EAGAIN:
+			return ErrMessageQueueFull
+		default:
+			return errno
+		}
+	}
+}
+
+func (mq *MessageQueue) Receive() ([]byte, uint, error) {
+	var recvPriority uint
+	recvBuf := make([]byte, mq.attributes.MaxMessageSize)
+
+	for {
+		size, _, errno := unix.Syscall6(
+			unix.SYS_MQ_TIMEDRECEIVE,
+			uintptr(mq.fd),
+			uintptr(unsafe.Pointer(&recvBuf[0])),
+			uintptr(len(recvBuf)),
+			uintptr(recvPriority),
+			0, // No timeout
+			0, // Last value unused
+		)
+
+		// EINVAL and EMSGSIZE should never occur since we manage those values
+		switch errno {
+		case 0:
+			return recvBuf[0:int(size)], recvPriority, nil
+		case unix.EINTR:
+			continue
+		case unix.EBADF:
+			return nil, 0, ErrMessageQueueInvalid
+		case unix.EAGAIN:
+			return nil, 0, ErrMessageQueueEmpty
+		default:
+			return nil, 0, errno
+		}
+	}
 }
