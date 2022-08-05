@@ -1,0 +1,6 @@
+image: golang:1.19-bullseye
+
+aliases:
+  test:
+    script:
+      - go test -v ./...
