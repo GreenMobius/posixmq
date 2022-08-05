@@ -1,7 +1,6 @@
 package posixmq
 
 import (
-	"io"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -53,4 +52,23 @@ func Open(name string, flags int64, cfg MessageQueueAttributes) (*MessageQueue, 
 
 func (mq *MessageQueue) Close() error {
 	return unix.Close(int(mq.fd))
+}
+
+func (mq *MessageQueue) Unlink() error {
+	unixName, err := unix.BytePtrFromString(mq.name)
+	if err != nil {
+		return err
+	}
+
+	_, _, errno := unix.Syscall(
+		unix.SYS_MQ_UNLINK,
+		uintptr(unsafe.Pointer(unixName)),
+		0, // Last 2 unused
+		0,
+	)
+	if errno != 0 {
+		return errno
+	}
+
+	return nil
 }
