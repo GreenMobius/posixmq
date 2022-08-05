@@ -8,6 +8,8 @@ import (
 )
 
 const MessageQueueDefaultMode int = 0644
+const MessageQueueMaxQueueSize int64 = 10
+const MessageQueueMaxMessageSize int64 = 8192
 
 type MessageQueue struct {
 	io.Closer
