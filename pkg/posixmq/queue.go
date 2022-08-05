@@ -49,3 +49,7 @@ func Open(name string, flags int64, cfg MessageQueueAttributes) (*MessageQueue, 
 		Attributes: cfg,
 	}, nil
 }
+
+func (mq *MessageQueue) Close() error {
+	return unix.Close(int(mq.fd))
+}
