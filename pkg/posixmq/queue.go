@@ -23,6 +23,9 @@ var ErrMessageTooLarge = errors.New("message exceeds maximum size")
 // ErrMessageQueueInvalid indicates that a message queue is not valid
 var ErrMessageQueueInvalid = errors.New("invalid message queue")
 
+// ErrTimeout indicates that an operation timed out
+var ErrTimeout = errors.New("operation timed out")
+
 type MessageQueue struct {
 	fd         int
 	name       string // Name of the message queue
@@ -107,6 +110,8 @@ func (mq *MessageQueue) Send(msg []byte, priority uint) error {
 			return nil
 		case unix.EINTR:
 			continue
+		case unix.ETIMEDOUT:
+			return ErrTimeout
 		case unix.EBADF:
 			return ErrMessageQueueInvalid
 		case unix.EMSGSIZE:
@@ -140,6 +145,8 @@ func (mq *MessageQueue) Receive() ([]byte, uint, error) {
 			return recvBuf[0:int(size)], recvPriority, nil
 		case unix.EINTR:
 			continue
+		case unix.ETIMEDOUT:
+			return nil, 0, ErrTimeout
 		case unix.EBADF:
 			return nil, 0, ErrMessageQueueInvalid
 		case unix.EAGAIN:
