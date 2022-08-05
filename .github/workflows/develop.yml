@@ -1,0 +1,25 @@
+name: Integration Pipeline
+
+# Run only on PRs
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [1.15, 1.16, 1.17, 1.18, 1.19]
+      fail-fast: False
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go-version }}
+      
+      - name: Test
+        run: go test -v ./...
