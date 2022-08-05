@@ -14,6 +14,9 @@ const MessageQueueMaxMessageSize int64 = 8192
 // ErrMessageQueueFull indicates that a send failed because a message queue is full
 var ErrMessageQueueFull = errors.New("message queue is full")
 
+// ErrMessageQueueEmpty indicates that a receive failed because a message queue is empty
+var ErrMessageQueueEmpty = errors.New("message queue is empty")
+
 // ErrMessageTooLarge indicates that a send failed because a message was longer than the specified maximum size
 var ErrMessageTooLarge = errors.New("message exceeds maximum size")
 
@@ -108,6 +111,37 @@ func (mq *MessageQueue) Send(msg []byte, priority uint) error {
 			return ErrMessageQueueFull
 		default:
 			return errno
+		}
+	}
+}
+
+func (mq *MessageQueue) Receive() ([]byte, uint, error) {
+	var recvPriority uint
+	recvBuf := make([]byte, mq.attributes.MaxMessageSize)
+
+	for {
+		size, _, errno := unix.Syscall6(
+			unix.SYS_MQ_TIMEDRECEIVE,
+			uintptr(mq.fd),
+			uintptr(unsafe.Pointer(&recvBuf[0])),
+			uintptr(len(recvBuf)),
+			uintptr(recvPriority),
+			0, // No timeout
+			0, // Last value unused
+		)
+
+		// EINVAL and EMSGSIZE should never occur since we manage those values
+		switch errno {
+		case 0:
+			return recvBuf[0:int(size)], recvPriority, nil
+		case unix.EINTR:
+			continue
+		case unix.EBADF:
+			return nil, 0, ErrMessageQueueInvalid
+		case unix.EAGAIN:
+			return nil, 0, ErrMessageQueueEmpty
+		default:
+			return nil, 0, errno
 		}
 	}
 }
