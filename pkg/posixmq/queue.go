@@ -1,6 +1,7 @@
 package posixmq
 
 import (
+	"errors"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -9,6 +10,15 @@ import (
 const MessageQueueDefaultMode int = 0644
 const MessageQueueMaxQueueSize int64 = 10
 const MessageQueueMaxMessageSize int64 = 8192
+
+// ErrMessageQueueFull indicates that a send failed because a message queue is full
+var ErrMessageQueueFull = errors.New("message queue is full")
+
+// ErrMessageTooLarge indicates that a send failed because a message was longer than the specified maximum size
+var ErrMessageTooLarge = errors.New("message exceeds maximum size")
+
+// ErrMessageQueueInvalid indicates that a message queue is not valid
+var ErrMessageQueueInvalid = errors.New("invalid message queue")
 
 type MessageQueue struct {
 	fd         int
@@ -71,4 +81,33 @@ func (mq *MessageQueue) Unlink() error {
 	}
 
 	return nil
+}
+
+func (mq *MessageQueue) Send(msg []byte, priority uint) error {
+	for {
+		_, _, errno := unix.Syscall6(
+			unix.SYS_MQ_TIMEDSEND,
+			uintptr(mq.fd),
+			uintptr(unsafe.Pointer(&msg[0])),
+			uintptr(len(msg)),
+			uintptr(priority),
+			0, // No timeout
+			0, // Last value unused
+		)
+
+		switch errno {
+		case 0:
+			return nil
+		case unix.EINTR:
+			continue
+		case unix.EBADF:
+			return ErrMessageQueueInvalid
+		case unix.EMSGSIZE:
+			return ErrMessageTooLarge
+		case unix.EAGAIN:
+			return ErrMessageQueueFull
+		default:
+			return errno
+		}
+	}
 }
