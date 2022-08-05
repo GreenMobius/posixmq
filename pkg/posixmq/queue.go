@@ -12,10 +12,9 @@ const MessageQueueMaxQueueSize int64 = 10
 const MessageQueueMaxMessageSize int64 = 8192
 
 type MessageQueue struct {
-	io.Closer
 	fd         int
-	Name       string // Name of the message queue
-	Attributes MessageQueueAttributes
+	name       string // Name of the message queue
+	attributes MessageQueueAttributes
 }
 
 type MessageQueueAttributes struct {
@@ -47,8 +46,8 @@ func Open(name string, flags int64, cfg MessageQueueAttributes) (*MessageQueue, 
 
 	return &MessageQueue{
 		fd:         int(mqfd),
-		Name:       name,
-		Attributes: cfg,
+		name:       name,
+		attributes: cfg,
 	}, nil
 }
 
