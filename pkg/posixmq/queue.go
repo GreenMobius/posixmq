@@ -2,6 +2,7 @@ package posixmq
 
 import (
 	"errors"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -89,9 +90,20 @@ func (mq *MessageQueue) Unlink() error {
 	return nil
 }
 
-func (mq *MessageQueue) Send(msg []byte, priority uint) error {
+func (mq *MessageQueue) commonSend(msg []byte, priority uint, timeout *time.Duration) error {
 	if len(msg) == 0 {
 		return errors.New("sending empty messages is not supported")
+	}
+
+	var timeoutPtr uintptr = 0
+	if timeout != nil {
+		deadline := time.Now().Add(*timeout)
+		unixTimeout, err := unix.TimeToTimespec(deadline)
+		if err != nil {
+			return err
+		}
+
+		timeoutPtr = uintptr(unsafe.Pointer(&unixTimeout))
 	}
 
 	for {
@@ -101,7 +113,7 @@ func (mq *MessageQueue) Send(msg []byte, priority uint) error {
 			uintptr(unsafe.Pointer(&msg[0])),
 			uintptr(len(msg)),
 			uintptr(priority),
-			0, // No timeout
+			timeoutPtr,
 			0, // Last value unused
 		)
 
@@ -122,6 +134,10 @@ func (mq *MessageQueue) Send(msg []byte, priority uint) error {
 			return errno
 		}
 	}
+}
+
+func (mq *MessageQueue) Send(msg []byte, priority uint) error {
+	return mq.commonSend(msg, priority, nil)
 }
 
 func (mq *MessageQueue) Receive() ([]byte, uint, error) {
