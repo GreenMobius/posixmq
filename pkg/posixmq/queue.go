@@ -191,3 +191,7 @@ func (mq *MessageQueue) commonReceive(timeout *time.Duration) ([]byte, uint, err
 func (mq *MessageQueue) Receive() ([]byte, uint, error) {
 	return mq.commonReceive(nil)
 }
+
+func (mq *MessageQueue) TimedReceive(timeout time.Duration) ([]byte, uint, error) {
+	return mq.commonReceive(&timeout)
+}
