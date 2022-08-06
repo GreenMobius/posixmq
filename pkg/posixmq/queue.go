@@ -2,6 +2,7 @@ package posixmq
 
 import (
 	"errors"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -86,9 +87,20 @@ func (mq *MessageQueue) Unlink() error {
 	return nil
 }
 
-func (mq *MessageQueue) Send(msg []byte, priority uint) error {
+func (mq *MessageQueue) commonSend(msg []byte, priority uint, timeout *time.Duration) error {
 	if len(msg) == 0 {
 		return errors.New("sending empty messages is not supported")
+	}
+
+	var timeoutPtr uintptr = 0
+	if timeout != nil {
+		deadline := time.Now().Add(*timeout)
+		unixTimeout, err := unix.TimeToTimespec(deadline)
+		if err != nil {
+			return err
+		}
+
+		timeoutPtr = uintptr(unsafe.Pointer(&unixTimeout))
 	}
 
 	for {
@@ -98,7 +110,7 @@ func (mq *MessageQueue) Send(msg []byte, priority uint) error {
 			uintptr(unsafe.Pointer(&msg[0])),
 			uintptr(len(msg)),
 			uintptr(priority),
-			0, // No timeout
+			timeoutPtr,
 			0, // Last value unused
 		)
 
@@ -111,7 +123,7 @@ func (mq *MessageQueue) Send(msg []byte, priority uint) error {
 			return ErrMessageQueueInvalid
 		case unix.EMSGSIZE:
 			return ErrMessageTooLarge
-		case unix.EAGAIN:
+		case unix.ETIMEDOUT, unix.EAGAIN:
 			return ErrMessageQueueFull
 		default:
 			return errno
@@ -119,9 +131,28 @@ func (mq *MessageQueue) Send(msg []byte, priority uint) error {
 	}
 }
 
-func (mq *MessageQueue) Receive() ([]byte, uint, error) {
+func (mq *MessageQueue) Send(msg []byte, priority uint) error {
+	return mq.commonSend(msg, priority, nil)
+}
+
+func (mq *MessageQueue) TimedSend(msg []byte, priority uint, timeout time.Duration) error {
+	return mq.commonSend(msg, priority, &timeout)
+}
+
+func (mq *MessageQueue) commonReceive(timeout *time.Duration) ([]byte, uint, error) {
 	var recvPriority uint
 	recvBuf := make([]byte, mq.attributes.MaxMessageSize)
+
+	var timeoutPtr uintptr = 0
+	if timeout != nil {
+		deadline := time.Now().Add(*timeout)
+		unixTimeout, err := unix.TimeToTimespec(deadline)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		timeoutPtr = uintptr(unsafe.Pointer(&unixTimeout))
+	}
 
 	for {
 		size, _, errno := unix.Syscall6(
@@ -130,7 +161,7 @@ func (mq *MessageQueue) Receive() ([]byte, uint, error) {
 			uintptr(unsafe.Pointer(&recvBuf[0])),
 			uintptr(len(recvBuf)),
 			uintptr(recvPriority),
-			0, // No timeout
+			timeoutPtr,
 			0, // Last value unused
 		)
 
@@ -142,10 +173,18 @@ func (mq *MessageQueue) Receive() ([]byte, uint, error) {
 			continue
 		case unix.EBADF:
 			return nil, 0, ErrMessageQueueInvalid
-		case unix.EAGAIN:
+		case unix.ETIMEDOUT, unix.EAGAIN:
 			return nil, 0, ErrMessageQueueEmpty
 		default:
 			return nil, 0, errno
 		}
 	}
+}
+
+func (mq *MessageQueue) Receive() ([]byte, uint, error) {
+	return mq.commonReceive(nil)
+}
+
+func (mq *MessageQueue) TimedReceive(timeout time.Duration) ([]byte, uint, error) {
+	return mq.commonReceive(&timeout)
 }
